@@ -7,34 +7,50 @@ const DIRECTIONS = [
 
 const DIFFICULTIES = [
   {
-    id: "easy",
-    label: "Easy",
-    subtitle: "A clean warm-up",
+    id: "hard",
+    label: "Hard",
+    subtitle: "Think two slides ahead",
     density: 0.16,
-    boulders: 1,
+    water: 0.28,
+    solid: 0.09,
+    boulders: 3,
+    waterBoulderChance: 0,
     minPushes: 1,
-    scoreBand: [20, 52],
-    accent: "mint",
+    minWaterPushes: 1,
+    hardRequirement: true,
+    minWaterTiles: 2,
+    scoreBand: [70, 100],
+    accent: "coral",
   },
   {
     id: "medium",
     label: "Medium",
     subtitle: "Read the rhythm",
-    density: 0.23,
+    density: 0.16,
+    water: 0.18,
+    solid: 0.07,
     boulders: 2,
+    waterBoulderChance: 0.3,
     minPushes: 1,
+    minWaterPushes: 1,
+    hardRequirement: false,
     scoreBand: [53, 78],
     accent: "gold",
   },
   {
-    id: "hard",
-    label: "Hard",
-    subtitle: "Think two slides ahead",
-    density: 0.3,
-    boulders: 3,
+    id: "easy",
+    label: "Easy",
+    subtitle: "A clean warm-up",
+    density: 0.1,
+    water: 0.14,
+    solid: 0.05,
+    boulders: 1,
+    waterBoulderChance: 0.15,
     minPushes: 1,
-    scoreBand: [70, 100],
-    accent: "coral",
+    minWaterPushes: 0,
+    hardRequirement: false,
+    scoreBand: [20, 52],
+    accent: "mint",
   },
 ];
 
@@ -77,6 +93,10 @@ function createCandidate(random, difficulty, size) {
         row === 0 || col === 0 || row === size - 1 || col === size - 1;
       if (isBoundary || random() < difficulty.density) {
         cells[cellIndex(row, col, size)] = "#";
+      } else if (random() < difficulty.water) {
+        cells[cellIndex(row, col, size)] = "~";
+      } else if (random() < difficulty.solid) {
+        cells[cellIndex(row, col, size)] = "O";
       }
     }
   }
@@ -92,12 +112,58 @@ function createCandidate(random, difficulty, size) {
   const start = choosePosition(availablePositions);
   const goal = choosePosition(availablePositions);
   cells[start] = "S";
-  cells[goal] = "G";
+  cells[goal] = "O";
   const boulders = [];
   while (boulders.length < difficulty.boulders) {
     const position = choosePosition(availablePositions);
     if (position === undefined) break;
     boulders.push(position);
+  }
+  const availableWater = cells.reduce((positions, tile, index) => {
+    if (tile === "~") positions.push(index);
+    return positions;
+  }, []);
+  boulders.forEach((position, index) => {
+    if (availableWater.length > 0 && random() < difficulty.waterBoulderChance) {
+      boulders[index] = choosePosition(availableWater);
+    }
+  });
+  if (difficulty.hardRequirement) {
+    let setupPosition;
+    for (let row = 1; row < size - 1 && setupPosition === undefined; row += 1) {
+      for (let col = 1; col < size - 1 && setupPosition === undefined; col += 1) {
+        const waterPosition = cellIndex(row, col, size);
+        if (cells[waterPosition] !== "~") continue;
+        for (const direction of DIRECTIONS) {
+          const beforeRow = row - direction.row;
+          const beforeCol = col - direction.col;
+          const afterRow = row + direction.row;
+          const afterCol = col + direction.col;
+          if (
+            beforeRow > 0 &&
+            beforeRow < size - 1 &&
+            beforeCol > 0 &&
+            beforeCol < size - 1 &&
+            afterRow > 0 &&
+            afterRow < size - 1 &&
+            afterCol > 0 &&
+            afterCol < size - 1
+          ) {
+            const beforePosition = cellIndex(beforeRow, beforeCol, size);
+            const afterPosition = cellIndex(afterRow, afterCol, size);
+            if (cells[beforePosition] === "." && cells[afterPosition] === "~") {
+              setupPosition = beforePosition;
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (setupPosition !== undefined) {
+      boulders[0] = setupPosition;
+      const availableIndex = availablePositions.indexOf(setupPosition);
+      if (availableIndex >= 0) availablePositions.splice(availableIndex, 1);
+    }
   }
   const stars = [];
   while (stars.length < 3) {
@@ -157,8 +223,62 @@ function collectAlongPath(stars, starsMask, from, to, direction, size) {
   return mask;
 }
 
+function failedMove(state, waterPosition, direction, size) {
+  return {
+    failed: true,
+    path: pathBetween(state.position, waterPosition, direction, size),
+    position: state.position,
+    boulders: state.boulders,
+    starsMask: state.starsMask,
+    pushed: false,
+  };
+}
+
+function driftFloatingBoulders(board, boulders, direction, size) {
+  const occupied = new Set(
+    boulders.filter((position) => board[position] !== "~"),
+  );
+  const floating = boulders
+    .filter((position) => board[position] === "~")
+    .sort((first, second) => {
+      const [firstRow, firstCol] = coordinates(first, size);
+      const [secondRow, secondCol] = coordinates(second, size);
+      return (
+        secondRow * direction.row + secondCol * direction.col -
+        (firstRow * direction.row + firstCol * direction.col)
+      );
+    });
+  const moved = [...boulders];
+  floating.forEach((position) => {
+    const [row, col] = coordinates(position, size);
+    const nextRow = row + direction.row;
+    const nextCol = col + direction.col;
+    const next = cellIndex(nextRow, nextCol, size);
+    const boulderIndex = boulders.indexOf(position);
+    if (
+      nextRow >= 0 &&
+      nextRow < size &&
+      nextCol >= 0 &&
+      nextCol < size &&
+      board[next] === "~" &&
+      !occupied.has(next)
+    ) {
+      moved[boulderIndex] = next;
+      occupied.add(next);
+    } else {
+      occupied.add(position);
+    }
+  });
+  return moved;
+}
+
 function moveState(board, state, direction, size, stars) {
-  const boulderSet = new Set(state.boulders);
+  const boulderSet = new Set(
+    state.boulders.filter((position) => board[position] !== "~"),
+  );
+  const floatingBoulderSet = new Set(
+    state.boulders.filter((position) => board[position] === "~"),
+  );
   const [startRow, startCol] = coordinates(state.position, size);
   let row = startRow + direction.row;
   let col = startCol + direction.col;
@@ -166,13 +286,26 @@ function moveState(board, state, direction, size, stars) {
 
   while (row >= 0 && row < size && col >= 0 && col < size) {
     const next = cellIndex(row, col, size);
+    if (board[next] === "~" && !floatingBoulderSet.has(next)) {
+      return failedMove(state, next, direction, size);
+    }
+    if (board[next] === "O" && !boulderSet.has(next)) {
+      playerPosition = next;
+      return {
+        position: playerPosition,
+        path: pathBetween(state.position, playerPosition, direction, size),
+        boulders: driftFloatingBoulders(board, state.boulders, direction, size),
+        starsMask: collectAlongPath(stars, state.starsMask, state.position, playerPosition, direction, size),
+        pushed: false,
+      };
+    }
     if (board[next] === "#")
       return playerPosition === state.position
         ? null
         : {
             position: playerPosition,
             path: pathBetween(state.position, playerPosition, direction, size),
-            boulders: state.boulders,
+            boulders: driftFloatingBoulders(board, state.boulders, direction, size),
             starsMask: collectAlongPath(
               stars,
               state.starsMask,
@@ -195,12 +328,15 @@ function moveState(board, state, direction, size, stars) {
       ) {
         const chainPosition = cellIndex(chainRow, chainCol, size);
         if (board[chainPosition] === "#") break;
+        if (board[chainPosition] === "O") break;
         if (boulderSet.has(chainPosition)) chain.push(chainPosition);
         chainRow += direction.row;
         chainCol += direction.col;
       }
 
-      const occupied = new Set(state.boulders);
+      const occupied = new Set(
+        state.boulders.filter((position) => board[position] !== "~"),
+      );
       const movedBoulders = new Map();
       for (
         let chainIndex = chain.length - 1;
@@ -228,6 +364,10 @@ function moveState(board, state, direction, size, stars) {
             occupied.has(nextBoulderPosition)
           )
             break;
+          if (board[nextBoulderPosition] === "O") {
+            boulderPosition = nextBoulderPosition;
+            break;
+          }
           boulderPosition = nextBoulderPosition;
           boulderRow += direction.row;
           boulderCol += direction.col;
@@ -243,7 +383,7 @@ function moveState(board, state, direction, size, stars) {
                   direction,
                   size,
                 ),
-                boulders: state.boulders,
+                boulders: driftFloatingBoulders(board, state.boulders, direction, size),
                 starsMask: collectAlongPath(
                   stars,
                   state.starsMask,
@@ -270,7 +410,7 @@ function moveState(board, state, direction, size, stars) {
                 direction,
                 size,
               ),
-              boulders: state.boulders,
+              boulders: driftFloatingBoulders(board, state.boulders, direction, size),
               starsMask: collectAlongPath(
                 stars,
                 state.starsMask,
@@ -285,7 +425,17 @@ function moveState(board, state, direction, size, stars) {
       const boulders = state.boulders.map(
         (boulder) => movedBoulders.get(boulder) || boulder,
       );
-      const movedBoulderSet = new Set(boulders);
+      const waterPushes = boulders.reduce(
+        (count, boulder, index) =>
+          count +
+          (board[boulder] === "~" && board[state.boulders[index]] !== "~"
+            ? 1
+            : 0),
+        0,
+      );
+      const movedBoulderSet = new Set(
+        boulders.filter((position) => board[position] !== "~"),
+      );
       let followRow = startRow + direction.row;
       let followCol = startCol + direction.col;
       let followPosition = state.position;
@@ -296,6 +446,10 @@ function moveState(board, state, direction, size, stars) {
         followCol < size
       ) {
         const followNext = cellIndex(followRow, followCol, size);
+        if (board[followNext] === "O" && !movedBoulderSet.has(followNext)) {
+          followPosition = followNext;
+          break;
+        }
         if (board[followNext] === "#" || movedBoulderSet.has(followNext)) break;
         followPosition = followNext;
         followRow += direction.row;
@@ -314,6 +468,7 @@ function moveState(board, state, direction, size, stars) {
           size,
         ),
         pushed: true,
+        waterPushes,
       };
     }
     playerPosition = next;
@@ -326,7 +481,7 @@ function moveState(board, state, direction, size, stars) {
     : {
         position: playerPosition,
         path: pathBetween(state.position, playerPosition, direction, size),
-        boulders: state.boulders,
+        boulders: driftFloatingBoulders(board, state.boulders, direction, size),
         starsMask: collectAlongPath(
           stars,
           state.starsMask,
@@ -339,11 +494,11 @@ function moveState(board, state, direction, size, stars) {
       };
 }
 
-function solve(board, start, goal, size, initialBoulders, stars) {
+function solve(board, start, goal, size, initialBoulders, stars, initialStarsMask = 0) {
   const initialState = {
     position: start,
     boulders: initialBoulders,
-    starsMask: 0,
+    starsMask: initialStarsMask,
   };
   const initialKey = stateKey(initialState);
   const queue = [initialKey];
@@ -351,6 +506,8 @@ function solve(board, start, goal, size, initialBoulders, stars) {
   const previous = new Map([[initialKey, null]]);
   const moveTaken = new Map();
   const pushTaken = new Map();
+  const waterPushTaken = new Map();
+  const waterTilesTaken = new Map();
   let exploredEdges = 0;
   let deadEnds = 0;
   let cursor = 0;
@@ -362,13 +519,14 @@ function solve(board, start, goal, size, initialBoulders, stars) {
     if (
       currentState.position === goal &&
       currentState.starsMask === (1 << stars.length) - 1
-    )
+    ) {
       break;
+    }
 
     let legalMoves = 0;
     for (const direction of DIRECTIONS) {
       const nextState = moveState(board, currentState, direction, size, stars);
-      if (nextState) {
+      if (nextState && !nextState.failed) {
         legalMoves += 1;
         exploredEdges += 1;
         const nextKey = stateKey(nextState);
@@ -377,6 +535,11 @@ function solve(board, start, goal, size, initialBoulders, stars) {
           states.set(nextKey, nextState);
           moveTaken.set(nextKey, direction.name);
           pushTaken.set(nextKey, nextState.pushed);
+          waterPushTaken.set(nextKey, nextState.waterPushes || 0);
+          waterTilesTaken.set(
+            nextKey,
+            nextState.path.filter((position) => board[position] === "~").length,
+          );
           queue.push(nextKey);
         }
       }
@@ -393,10 +556,14 @@ function solve(board, start, goal, size, initialBoulders, stars) {
 
   const route = [];
   let pushes = 0;
+  let waterPushes = 0;
+  let waterTiles = 0;
   let currentKey = goalKey;
   while (currentKey !== initialKey) {
     route.unshift(moveTaken.get(currentKey));
     if (pushTaken.get(currentKey)) pushes += 1;
+    waterPushes += waterPushTaken.get(currentKey) || 0;
+    waterTiles += waterTilesTaken.get(currentKey) || 0;
     currentKey = previous.get(currentKey);
   }
 
@@ -407,6 +574,11 @@ function solve(board, start, goal, size, initialBoulders, stars) {
   return {
     route,
     pushes,
+    waterPushes,
+    waterTiles,
+    waterBouldersAtGoal: states
+      .get(goalKey)
+      .boulders.filter((position) => board[position] === "~").length,
     explored: reachableStates,
     deadEnds,
     averageBranching,
@@ -443,7 +615,8 @@ function generatePuzzle(dateKey, difficulty, size) {
   const random = createRandom(hashSeed(`${dateKey}:${difficulty.id}`));
   let best = null;
 
-  for (let attempt = 0; attempt < 1800; attempt += 1) {
+  const attemptLimit = difficulty.hardRequirement ? 6000 : 1800;
+  for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
     const candidate = createCandidate(random, difficulty, size);
     const solution = solve(
       candidate.cells,
@@ -454,7 +627,13 @@ function generatePuzzle(dateKey, difficulty, size) {
       candidate.stars,
     );
     if (!solution) continue;
-    if (solution.pushes < difficulty.minPushes) continue;
+    const meetsPushTarget = solution.pushes >= difficulty.minPushes;
+    const meetsWaterPushTarget = solution.waterPushes >= difficulty.minWaterPushes;
+    const meetsHardRequirement =
+      !difficulty.hardRequirement ||
+      (solution.waterTiles >= difficulty.minWaterTiles &&
+        solution.waterPushes >= 1);
+    if (difficulty.hardRequirement && !meetsHardRequirement) continue;
 
     const difficultyScore = calculateDifficulty(
       solution,
@@ -464,13 +643,19 @@ function generatePuzzle(dateKey, difficulty, size) {
       candidate.stars.length,
     );
     const isIdeal =
+      meetsPushTarget &&
+      meetsWaterPushTarget &&
+      meetsHardRequirement &&
       difficultyScore >= difficulty.scoreBand[0] &&
       difficultyScore <= difficulty.scoreBand[1];
     const score = isIdeal
       ? 10000 + difficultyScore
       : Math.max(
           0,
-          1000 - Math.abs(difficultyScore - difficulty.scoreBand[0]) * 30,
+          1000 -
+            Math.abs(difficultyScore - difficulty.scoreBand[0]) * 30 -
+            (meetsPushTarget ? 0 : 400) -
+            (meetsWaterPushTarget ? 0 : 350),
         );
     if (!best || score > best.score) {
       best = { ...candidate, solution, difficultyScore, score, attempt };
@@ -490,6 +675,10 @@ function todayKey() {
 function tileClass(tile) {
   return tile === "#"
     ? "wall"
+    : tile === "~"
+      ? "water"
+      : tile === "O"
+        ? "solid"
     : tile === "G"
       ? "goal"
       : tile === "S"
@@ -514,7 +703,9 @@ function renderBoard(
           showHeatmap && heat
             ? ` style="--heat-opacity: ${Math.max(0.12, (heat / maxHeat) * 0.82)}"`
             : "";
-        return `<div class="tile ${tileClass(tile)}${showHeatmap && heat ? " heat" : ""}${puzzle.boulders.includes(index) ? " has-boulder" : ""}" data-position="${index}"${heatStyle}>${tile === "G" ? '<span class="goal-mark" aria-hidden="true"></span>' : ""}${puzzle.stars.includes(index) && !(starsMask & (1 << puzzle.stars.indexOf(index))) ? '<span class="star" aria-label="Star"></span>' : ""}${puzzle.boulders.includes(index) ? '<span class="boulder" aria-label="Boulder"></span>' : ""}${index === playerPosition ? '<span class="player" aria-label="Player"></span>' : ""}</div>`;
+        const hasBoulder = puzzle.boulders.includes(index);
+        const boulderClass = tile === "~" ? " floating-boulder" : " boulder";
+        return `<div class="tile ${tileClass(tile)}${index === puzzle.goal ? " goal-tile" : ""}${showHeatmap && heat ? " heat" : ""}${hasBoulder ? " has-boulder" : ""}" data-position="${index}"${heatStyle}>${index === puzzle.goal ? '<svg class="goal-flag" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V3m0 1h11l-4 4 4 4H6" /></svg>' : ""}${puzzle.stars.includes(index) && !(starsMask & (1 << puzzle.stars.indexOf(index))) ? '<span class="star" aria-label="Star"></span>' : ""}${hasBoulder ? `<span class="${boulderClass.trim()}" aria-label="${tile === "~" ? "Floating boulder" : "Boulder"}"></span>` : ""}${index === playerPosition ? '<span class="player" aria-label="Player"></span>' : ""}</div>`;
       })
       .join("")}
   </div>`;
@@ -522,7 +713,7 @@ function renderBoard(
 
 function puzzleCard(puzzle, difficulty, puzzleId) {
   return `
-    <article class="puzzle-card ${difficulty.accent}" data-puzzle-id="${puzzleId}" role="button" tabindex="0" aria-label="Play ${difficulty.label} puzzle">
+    <article class="puzzle-card ${difficulty.accent}" data-puzzle-id="${puzzleId}" data-generation-attempts="${puzzle.attempt + 1}" data-water-pushes="${puzzle.solution.waterPushes}" data-water-tiles="${puzzle.solution.waterTiles}" role="button" tabindex="0" aria-label="Play ${difficulty.label} puzzle">
       <div class="card-heading">
         <div>
           <p class="eyebrow">${difficulty.label} / ${String(puzzle.difficultyScore).padStart(2, "0")} difficulty</p>
@@ -550,12 +741,14 @@ function modalMarkup() {
       <div class="game-topline"><span class="eyebrow" id="game-difficulty"></span><span class="key-hint">ARROW KEYS TO SLIDE / PUSH</span></div>
       <h2 id="game-title"></h2>
       <div class="perfect-banner" id="perfect-banner" hidden>PERFECT</div>
+      <div class="restart-overlay" id="restart-overlay" hidden><strong id="restart-countdown">3</strong><span>Water reached. Restarting.</span></div>
       <div class="game-layout">
         <div class="game-board-wrap" id="game-board"></div>
         <aside class="game-info">
           <div class="game-status" id="game-status">Find the goal.</div>
           <div class="star-progress"><strong id="star-count">0 / 3</strong><span>stars collected</span></div>
-          <div class="move-count"><strong id="move-count">0</strong><span>moves</span></div>
+          <div class="move-row"><div class="move-count"><strong id="move-count">0</strong><span>moves</span></div><button class="hint-button" id="hint-button" type="button">HINT</button></div>
+          <div class="hint-output" id="hint-output" aria-live="polite"></div>
           <div class="reset-count"><strong id="reset-count">0</strong><span>resets</span></div>
           <div class="elapsed-time"><strong id="elapsed-time">00:00</strong><span>time</span></div>
           <button class="end-game" id="end-game" type="button" disabled>End puzzle</button>
@@ -563,7 +756,9 @@ function modalMarkup() {
           <div class="goal-copy"><span class="legend-dot star-legend"></span><span>Collect all three stars.</span></div>
           <div class="goal-copy"><span class="legend-dot goal-legend"></span><span>Reach the glowing goal.</span></div>
           <div class="goal-copy"><span class="legend-dot wall-legend"></span><span>Walls stop your slide.</span></div>
-          <div class="goal-copy"><span class="legend-dot boulder-legend"></span><span>Boulders slide when pushed.</span></div>
+          <div class="goal-copy"><span class="legend-dot water-legend"></span><span>Water restarts the puzzle.</span></div>
+          <div class="goal-copy"><span class="legend-dot solid-legend"></span><span>Solid ground stops slides.</span></div>
+          <div class="goal-copy"><span class="legend-dot boulder-legend"></span><span>Boulders slide when pushed; floating ones drift.</span></div>
           <button class="reset-game" type="button">Reset position</button>
         </aside>
       </div>
@@ -575,7 +770,7 @@ function render() {
   const dateKey = todayKey();
   const seedKey = `${dateKey}:${refreshIndex}`;
   const puzzles = DIFFICULTIES.map((difficulty) => {
-    const size = 9;
+    const size = 12;
     return { difficulty, puzzle: generatePuzzle(seedKey, difficulty, size) };
   });
   document.querySelector("#app").innerHTML = `
@@ -586,7 +781,7 @@ function render() {
         <div class="hero-copy">
           <p class="eyebrow">Three routes. One frozen board.</p>
           <h1>Find your way<br /><em>across the ice.</em></h1>
-          <p class="lede">A fresh set of 9x9 sliding puzzles, generated once each day. Every route is solvable. The shortest path is waiting in the walls.</p>
+          <p class="lede">A fresh set of 12x12 sliding puzzles, generated once each day. Every route is solvable. The shortest path is waiting in the walls.</p>
         </div>
         <div class="rule-strip"><span>01 / SLIDE</span><span>02 / STOP</span><span>03 / SOLVE</span></div>
       </header>
@@ -594,7 +789,7 @@ function render() {
         <div class="section-intro"><div><p class="eyebrow">Today's set</p><h2 id="daily-heading">Choose your temperature.</h2></div><p class="section-note">The generator uses the date as its seed, so everyone gets the same three boards.</p></div>
         <div class="puzzle-grid">${puzzles.map(({ puzzle, difficulty }, index) => puzzleCard(puzzle, difficulty, index)).join("")}</div>
       </section>
-      <footer class="footer"><span>FROSTLINE ENGINE 0.1</span><span>9 × 9 / BFS VERIFIED</span><span>NEW BOARDS AT MIDNIGHT</span></footer>
+      <footer class="footer"><span>FROSTLINE ENGINE 0.1</span><span>12 × 12 / BFS VERIFIED</span><span>NEW BOARDS AT MIDNIGHT</span></footer>
     </main>
     ${modalMarkup()}
   `;
@@ -642,8 +837,11 @@ function render() {
         : `${collectedStars} / ${puzzle.stars.length} stars collected.`;
     document.querySelector("#end-game").disabled =
       finished || !atGoal || collectedStars === 0;
+    document.querySelector("#hint-button").disabled = finished || activeGame.restartPending;
     document.querySelector("#copy-heatmap").hidden = !finished;
     document.querySelector("#perfect-banner").hidden = !activeGame.perfect;
+    document.querySelector("#restart-overlay").hidden = !activeGame.restartPending;
+    document.querySelector("#restart-countdown").textContent = activeGame.restartCountdown;
     document.querySelector(".game-modal").classList.toggle("won", finished);
     document.querySelector(".game-modal").classList.toggle("perfect", activeGame.perfect);
     gameBoard.innerHTML = renderBoard(
@@ -669,9 +867,12 @@ function render() {
       won: false,
       ended: false,
       perfect: false,
+      restartPending: false,
+      restartCountdown: 0,
       startedAt: Date.now(),
       finishedAt: null,
       timerId: null,
+      restartTimerId: null,
     };
     activeGame.timerId = window.setInterval(updateTimer, 1000);
     updateGame();
@@ -684,11 +885,12 @@ function render() {
     modal.hidden = true;
     document.body.classList.remove("modal-open");
     if (activeGame?.timerId) window.clearInterval(activeGame.timerId);
+    if (activeGame?.restartTimerId) window.clearInterval(activeGame.restartTimerId);
     activeGame = null;
   }
 
   function handleMove(directionName) {
-    if (!activeGame || activeGame.won || activeGame.ended) return;
+    if (!activeGame || activeGame.won || activeGame.ended || activeGame.restartPending) return;
     const direction = DIRECTIONS.find(({ name }) => name === directionName);
     const next = moveState(
       activeGame.puzzle.cells,
@@ -702,9 +904,40 @@ function render() {
       activeGame.puzzle.stars,
     );
     if (!next) return;
+    if (next.failed) {
+      activeGame.moves += 1;
+      next.path.forEach((position) => {
+        activeGame.heatmap[position] = (activeGame.heatmap[position] || 0) + 1;
+      });
+      activeGame.restartPending = true;
+      activeGame.restartCountdown = 3;
+      updateGame();
+      activeGame.restartTimerId = window.setInterval(() => {
+        activeGame.restartCountdown -= 1;
+        if (activeGame.restartCountdown <= 0) {
+          window.clearInterval(activeGame.restartTimerId);
+          activeGame.restartTimerId = null;
+          activeGame.position = activeGame.puzzle.start;
+          activeGame.boulders = [...activeGame.puzzle.boulders];
+          activeGame.starsMask = 0;
+          activeGame.won = false;
+          activeGame.ended = false;
+          activeGame.perfect = false;
+          activeGame.restartPending = false;
+          activeGame.heatmap[activeGame.puzzle.start] = (activeGame.heatmap[activeGame.puzzle.start] || 0) + 1;
+          activeGame.resets += 1;
+          activeGame.finishedAt = null;
+          updateGame();
+        } else {
+          updateGame();
+        }
+      }, 1000);
+      return;
+    }
     activeGame.position = next.position;
     activeGame.boulders = next.boulders;
     activeGame.starsMask = next.starsMask;
+    document.querySelector("#hint-output").textContent = "";
     next.path.forEach((position) => {
       activeGame.heatmap[position] = (activeGame.heatmap[position] || 0) + 1;
     });
@@ -794,6 +1027,24 @@ function render() {
     });
   });
   document.querySelector(".close-game").addEventListener("click", closeGame);
+  document.querySelector("#hint-button").addEventListener("click", () => {
+    if (!activeGame || activeGame.won || activeGame.ended || activeGame.restartPending) return;
+    const solution = solve(
+      activeGame.puzzle.cells,
+      activeGame.position,
+      activeGame.puzzle.goal,
+      activeGame.puzzle.size,
+      activeGame.boulders,
+      activeGame.puzzle.stars,
+      activeGame.starsMask,
+    );
+    const hintText = solution?.route?.length
+      ? `Best next move: ${solution.route[0]}`
+      : "No route found. Consider a reset.";
+    activeGame.moves += 1;
+    updateGame();
+    document.querySelector("#hint-output").textContent = hintText;
+  });
   document.querySelector("#end-game").addEventListener("click", () => {
     if (!activeGame || activeGame.won || activeGame.ended) return;
     const collectedStars = activeGame.starsMask.toString(2).split("1").length - 1;
@@ -814,11 +1065,12 @@ function render() {
           "Copying images is not available here.";
       }
     });
-  document.querySelector(".reset-game").addEventListener("click", () => {
+  function resetPuzzle() {
     if (!activeGame) return;
     activeGame.position = activeGame.puzzle.start;
     activeGame.boulders = [...activeGame.puzzle.boulders];
     activeGame.starsMask = 0;
+    document.querySelector("#hint-output").textContent = "";
     activeGame.won = false;
     activeGame.ended = false;
     activeGame.perfect = false;
@@ -829,7 +1081,9 @@ function render() {
     if (!activeGame.timerId)
       activeGame.timerId = window.setInterval(updateTimer, 1000);
     updateGame();
-  });
+  }
+
+  document.querySelector(".reset-game").addEventListener("click", resetPuzzle);
   modal.addEventListener("click", (event) => {
     if (event.target === modal) closeGame();
   });

@@ -73,11 +73,14 @@ h1 em { color: var(--ice); font-style: normal; }
 .tile.heat::before { content: ''; position: absolute; inset: 0; background: rgba(241, 136, 120, var(--heat-opacity)); z-index: 0; }
 .tile.ice { background: #8bd9d2; box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
 .tile.wall { background: #20384b; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); }
+.tile.water { background: #287d9b; background-image: linear-gradient(135deg, rgba(200,241,237,.18) 25%, transparent 25%, transparent 50%, rgba(200,241,237,.18) 50%, rgba(200,241,237,.18) 75%, transparent 75%); background-size: 13px 13px; }
+.tile.solid { background: #8f8176; box-shadow: inset 0 0 0 2px rgba(231,217,201,.24), inset 0 -5px 0 rgba(54,43,37,.28); }
 .tile.start { background: #8bd9d2; }
 .tile.goal { background: #f0bd73; }
-.goal-mark { position: absolute; inset: 31%; border: 2px solid #fff0cc; border-radius: 50%; box-shadow: 0 0 14px #fff0cc; }
+.goal-flag { position: absolute; inset: 19%; width: 62%; height: 62%; fill: none; stroke: #fff0cc; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px #fff0cc); z-index: 1; }
 .star { position: absolute; inset: 22%; background: #fff3ad; clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 56%, 79% 94%, 50% 71%, 21% 94%, 32% 56%, 2% 35%, 39% 35%); filter: drop-shadow(0 0 5px #fff3ad); z-index: 1; }
 .boulder { position: absolute; inset: 13%; border-radius: 50%; background: #8c6b58; border: 2px solid #d6ad8e; box-shadow: inset -3px -4px 0 rgba(54,35,28,.32), 0 3px 4px rgba(7,18,29,.35); z-index: 1; }
+.floating-boulder { position: absolute; inset: 10%; border-radius: 45%; background: #7b9b9b; border: 2px solid #d4efdf; box-shadow: inset 0 -4px 0 rgba(41,82,86,.35), 0 0 0 3px rgba(200,241,237,.22); z-index: 1; transform: rotate(-8deg); }
 .player { position: absolute; inset: 21%; background: #f7fbf1; border: 3px solid #244253; border-radius: 50%; box-shadow: 0 0 0 3px rgba(247,251,241,.22), 0 3px 5px rgba(7,18,29,.3); z-index: 1; }
 .modal-open { overflow: hidden; }
 .modal-backdrop { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(4, 12, 20, .84); backdrop-filter: blur(12px); animation: fade-in .2s ease both; }
@@ -91,6 +94,10 @@ h1 em { color: var(--ice); font-style: normal; }
 .game-modal h2 { margin: 8px 0 30px; color: var(--ink); font-size: clamp(30px, 5vw, 52px); letter-spacing: -.05em; }
 .perfect-banner { position: absolute; z-index: 2; top: 50%; left: 50%; color: #fff3ad; font: 900 clamp(54px, 12vw, 132px) 'Space Grotesk', sans-serif; letter-spacing: .02em; line-height: 1; text-shadow: 0 5px 0 #07121d, 0 0 35px rgba(255, 243, 173, .72); transform: translate(-50%, -50%) rotate(-7deg); pointer-events: none; animation: perfect-pop .45s cubic-bezier(.2, 1.4, .4, 1) both; }
 .perfect-banner[hidden] { display: none; }
+.restart-overlay { position: absolute; z-index: 5; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(7,18,29,.78); color: var(--ice); text-align: center; pointer-events: none; }
+.restart-overlay strong { color: var(--coral); font: 600 88px 'DM Mono', monospace; line-height: 1; text-shadow: 0 0 22px rgba(241,136,120,.5); }
+.restart-overlay span { font: 11px 'DM Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
+.restart-overlay[hidden] { display: none; }
 .game-layout { display: block; }
 .game-board-wrap { width: 100%; display: flex; justify-content: center; overflow: auto; }
 .play-board { --tile-size: 42px; gap: 3px; padding: 9px; border: 1px solid rgba(200,241,237,.22); box-shadow: 0 15px 35px rgba(0,0,0,.2); }
@@ -100,6 +107,12 @@ h1 em { color: var(--ice); font-style: normal; }
 .game-modal.won .game-status { color: var(--gold); }
 .move-count { display: flex; flex-direction: column; padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .move-count strong { color: var(--ice); font: 500 42px 'DM Mono', monospace; letter-spacing: -.08em; }
+.move-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+.move-row .move-count { padding: 0; border: 0; }
+.hint-button { padding: 10px 12px; border: 1px solid var(--mint); background: transparent; color: var(--mint); cursor: pointer; font: 10px 'DM Mono', monospace; letter-spacing: .1em; }
+.hint-button:hover:not(:disabled), .hint-button:focus-visible:not(:disabled) { background: rgba(120,214,197,.12); outline: none; }
+.hint-button:disabled { border-color: var(--line); color: #55717a; cursor: not-allowed; }
+.hint-output { min-height: 17px; color: var(--gold); font: 11px 'DM Mono', monospace; letter-spacing: .04em; }
 .star-progress { display: flex; flex-direction: column; padding: 14px 0; border-top: 1px solid var(--line); }
 .star-progress strong { color: #fff3ad; font: 500 28px 'DM Mono', monospace; }
 .elapsed-time { display: flex; flex-direction: column; padding: 14px 0; border-top: 1px solid var(--line); }
@@ -112,6 +125,8 @@ h1 em { color: var(--ice); font-style: normal; }
 .goal-legend { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
 .star-legend { background: #fff3ad; clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 56%, 79% 94%, 50% 71%, 21% 94%, 32% 56%, 2% 35%, 39% 35%); }
 .wall-legend { background: #20384b; border: 1px solid #476278; }
+.water-legend { background: #287d9b; border: 1px solid #83cfda; }
+.solid-legend { background: #8f8176; border: 1px solid #d8c6b4; }
 .boulder-legend { background: #8c6b58; border: 1px solid #d6ad8e; border-radius: 50%; }
 .reset-game { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); background: transparent; color: var(--ice); cursor: pointer; font: 10px 'DM Mono', monospace; letter-spacing: .08em; text-transform: uppercase; }
 .reset-game:hover, .reset-game:focus-visible { border-color: var(--mint); color: var(--mint); outline: none; }
@@ -126,3 +141,4 @@ h1 em { color: var(--ice); font-style: normal; }
 @keyframes perfect-pop { from { opacity: 0; transform: translate(-50%, -50%) rotate(-7deg) scale(.7); } to { opacity: 1; transform: translate(-50%, -50%) rotate(-7deg) scale(1); } }
 @media (max-width: 850px) { .page-shell { width: min(100% - 36px, 620px); } .hero { min-height: 430px; } .date-chip { position: static; margin-top: 28px; } .hero-copy { margin-top: 62px; } .puzzle-grid { grid-template-columns: 1fr; } .puzzle-card { display: grid; grid-template-columns: 1fr 1.2fr; gap: 18px 22px; } .card-heading { grid-column: 1 / -1; min-height: auto; } .preview-frame { grid-row: span 2; align-self: stretch; display: grid; place-items: center; } .metrics { align-self: end; } }
 @media (max-width: 540px) { .page-shell { width: min(100% - 28px, 420px); } h1 { font-size: 56px; } .rule-strip { gap: 8px; font-size: 9px; } .section-intro { display: block; } .section-note { margin-top: 18px; } .puzzle-card { display: block; } .preview-frame { margin: 18px auto 22px; } .footer { gap: 12px; flex-wrap: wrap; } .footer span:last-child { width: 100%; } .modal-backdrop { padding: 12px; } .game-modal { padding: 24px 18px; max-height: calc(100vh - 24px); } .game-topline { display: block; padding-right: 40px; } .key-hint { display: block; margin-top: 12px; } .game-modal h2 { margin-bottom: 20px; } .play-board { --tile-size: 28px; } .game-info { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; } .game-status, .move-count { grid-column: 1 / -1; } .move-count { padding: 10px 0; } .reset-game { grid-column: 1 / -1; margin-top: 2px; } }
+@media (max-width: 540px) { .page-shell { width: min(100% - 28px, 420px); } h1 { font-size: 56px; } .rule-strip { gap: 8px; font-size: 9px; } .section-intro { display: block; } .section-note { margin-top: 18px; } .puzzle-card { display: block; } .preview-frame { margin: 18px auto 22px; } .footer { gap: 12px; flex-wrap: wrap; } .footer span:last-child { width: 100%; } .modal-backdrop { padding: 12px; } .game-modal { padding: 24px 18px; max-height: calc(100vh - 24px); } .game-topline { display: block; padding-right: 40px; } .key-hint { display: block; margin-top: 12px; } .game-modal h2 { margin-bottom: 20px; } .play-board { --tile-size: 28px; } .game-info { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; } .game-status, .move-row, .hint-output { grid-column: 1 / -1; } .move-count { padding: 0; } .reset-game { grid-column: 1 / -1; margin-top: 2px; } }
