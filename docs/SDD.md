@@ -1,3 +1,7 @@
+| Easy | 5% | 5% | 1 | 20-52 |
+| Medium | 10% | 10% | 2 | 53-78 |
+| Hard | 15% | 15% | 3 | 70-100 |
+
 # Frostline Daily: Software Design Description
 
 ## 1. Purpose
@@ -46,12 +50,13 @@ Frostline Daily is a small browser game that generates three deterministic ice-s
 - A move chooses up, right, down, or left. The player slides across ice and stops immediately before a wall, board edge, or boulder.
 - When the player reaches a boulder, the boulder is pushed in the attempted direction and slides until the next wall, board edge, or boulder.
 - If multiple boulders share the push direction before the next wall, the push propagates through the chain from the player to the nearest boulder and onward to the farthest boulder.
-- After a successful push, the player follows the same slide and stops immediately before the boulder's new stopping tile.
+- After a successful push, the player remains at the contact tile while the boulder chain propagates independently.
 - A push is invalid when the boulder cannot move at least one tile; the player still slides up to the boulder if there is open ice behind it.
 - Boulders cannot pass through or occupy the same tile as another boulder.
 - A player entering water fails the move and triggers a short restart countdown; the failed route is never considered solvable by BFS.
 - A boulder entering water floats there, changes appearance, becomes passable to the player, and does not block another boulder crossing that water tile.
-- On a valid player slide, floating boulders drift one open water tile in the same cardinal direction when possible.
+- On a valid player slide, boulders that were already floating at the start of that slide drift one open water tile in the same cardinal direction when possible.
+- A boulder that enters water during the current slide does not drift again until a later player move.
 - Sliding onto solid ground stops the player immediately on that tile; boulders also stop when they land on solid ground.
 - A move that would not change position is invalid.
 - The solution is the shortest sequence of slide directions found by BFS over the combined player and boulder positions.
@@ -72,11 +77,11 @@ Frostline Daily is a small browser game that generates three deterministic ice-s
 
 Difficulty targets are approximate rather than absolute:
 
-| Tier | Wall density | Water density | Boulders | Target score |
-| --- | ---: | ---: | ---: | ---: |
-| Easy | 10% | 14% | 1 | 20-52 |
-| Medium | 16% | 18% | 2 | 53-78 |
-| Hard | 16% | 28% | 3 | 70-100 |
+| Tier   | Wall density | Water density | Boulders | Target score |
+| ------ | -----------: | ------------: | -------: | -----------: |
+| Easy   |           5% |            8% |        1 |        20-52 |
+| Medium |          10% |           12% |        2 |        53-78 |
+| Hard   |          15% |           18% |        3 |       70-100 |
 
 The composite score is weighted across shortest route length, explored states, average legal branching, dead-end states, and wall density. The UI reports the score alongside route length and explored states.
 

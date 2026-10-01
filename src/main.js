@@ -10,11 +10,11 @@ const DIFFICULTIES = [
     id: "hard",
     label: "Hard",
     subtitle: "Think two slides ahead",
-    density: 0.16,
-    water: 0.28,
-    solid: 0.09,
+    density: 0.15,
+    water: 0.15,
+    solid: 0.1,
     boulders: 3,
-    waterBoulderChance: 0,
+    waterBoulderChance: 0.25,
     minPushes: 1,
     minWaterPushes: 1,
     hardRequirement: true,
@@ -26,11 +26,11 @@ const DIFFICULTIES = [
     id: "medium",
     label: "Medium",
     subtitle: "Read the rhythm",
-    density: 0.16,
-    water: 0.18,
-    solid: 0.07,
+    density: 0.1,
+    water: 0.1,
+    solid: 0.08,
     boulders: 2,
-    waterBoulderChance: 0.3,
+    waterBoulderChance: 0.2,
     minPushes: 1,
     minWaterPushes: 1,
     hardRequirement: false,
@@ -41,11 +41,11 @@ const DIFFICULTIES = [
     id: "easy",
     label: "Easy",
     subtitle: "A clean warm-up",
-    density: 0.1,
-    water: 0.14,
+    density: 0.05,
+    water: 0.05,
     solid: 0.05,
     boulders: 1,
-    waterBoulderChance: 0.15,
+    waterBoulderChance: 0.1,
     minPushes: 1,
     minWaterPushes: 0,
     hardRequirement: false,
@@ -114,7 +114,14 @@ function createCandidate(random, difficulty, size) {
   cells[start] = "S";
   cells[goal] = "O";
   const boulders = [];
-  while (boulders.length < difficulty.boulders) {
+  const targetBoulders =
+    difficulty.boulderDensity === undefined
+      ? difficulty.boulders
+      : Math.max(
+          1,
+          Math.round((size - 2) * (size - 2) * difficulty.boulderDensity),
+        );
+  while (boulders.length < targetBoulders) {
     const position = choosePosition(availablePositions);
     if (position === undefined) break;
     boulders.push(position);
@@ -131,7 +138,11 @@ function createCandidate(random, difficulty, size) {
   if (difficulty.hardRequirement) {
     let setupPosition;
     for (let row = 1; row < size - 1 && setupPosition === undefined; row += 1) {
-      for (let col = 1; col < size - 1 && setupPosition === undefined; col += 1) {
+      for (
+        let col = 1;
+        col < size - 1 && setupPosition === undefined;
+        col += 1
+      ) {
         const waterPosition = cellIndex(row, col, size);
         if (cells[waterPosition] !== "~") continue;
         for (const direction of DIRECTIONS) {
@@ -235,46 +246,15 @@ function failedMove(state, waterPosition, direction, size) {
 }
 
 function driftFloatingBoulders(board, boulders, direction, size) {
-  const occupied = new Set(
-    boulders.filter((position) => board[position] !== "~"),
-  );
-  const floating = boulders
-    .filter((position) => board[position] === "~")
-    .sort((first, second) => {
-      const [firstRow, firstCol] = coordinates(first, size);
-      const [secondRow, secondCol] = coordinates(second, size);
-      return (
-        secondRow * direction.row + secondCol * direction.col -
-        (firstRow * direction.row + firstCol * direction.col)
-      );
-    });
-  const moved = [...boulders];
-  floating.forEach((position) => {
-    const [row, col] = coordinates(position, size);
-    const nextRow = row + direction.row;
-    const nextCol = col + direction.col;
-    const next = cellIndex(nextRow, nextCol, size);
-    const boulderIndex = boulders.indexOf(position);
-    if (
-      nextRow >= 0 &&
-      nextRow < size &&
-      nextCol >= 0 &&
-      nextCol < size &&
-      board[next] === "~" &&
-      !occupied.has(next)
-    ) {
-      moved[boulderIndex] = next;
-      occupied.add(next);
-    } else {
-      occupied.add(position);
-    }
-  });
-  return moved;
+  return [...boulders];
 }
 
 function moveState(board, state, direction, size, stars) {
   const boulderSet = new Set(
     state.boulders.filter((position) => board[position] !== "~"),
+  );
+  const movableBoulderSet = new Set(
+    state.boulders.filter((position) => board[position] === "."),
   );
   const floatingBoulderSet = new Set(
     state.boulders.filter((position) => board[position] === "~"),
@@ -289,23 +269,18 @@ function moveState(board, state, direction, size, stars) {
     if (board[next] === "~" && !floatingBoulderSet.has(next)) {
       return failedMove(state, next, direction, size);
     }
-    if (board[next] === "O" && !boulderSet.has(next)) {
-      playerPosition = next;
-      return {
-        position: playerPosition,
-        path: pathBetween(state.position, playerPosition, direction, size),
-        boulders: driftFloatingBoulders(board, state.boulders, direction, size),
-        starsMask: collectAlongPath(stars, state.starsMask, state.position, playerPosition, direction, size),
-        pushed: false,
-      };
-    }
-    if (board[next] === "#")
+    if (board[next] === "O" && boulderSet.has(next)) {
       return playerPosition === state.position
         ? null
         : {
             position: playerPosition,
             path: pathBetween(state.position, playerPosition, direction, size),
-            boulders: driftFloatingBoulders(board, state.boulders, direction, size),
+            boulders: driftFloatingBoulders(
+              board,
+              state.boulders,
+              direction,
+              size,
+            ),
             starsMask: collectAlongPath(
               stars,
               state.starsMask,
@@ -316,6 +291,69 @@ function moveState(board, state, direction, size, stars) {
             ),
             pushed: false,
           };
+    }
+    if (board[next] === "O" && !boulderSet.has(next)) {
+      playerPosition = next;
+      return {
+        position: playerPosition,
+        path: pathBetween(state.position, playerPosition, direction, size),
+        boulders: driftFloatingBoulders(board, state.boulders, direction, size),
+        starsMask: collectAlongPath(
+          stars,
+          state.starsMask,
+          state.position,
+          playerPosition,
+          direction,
+          size,
+        ),
+        pushed: false,
+      };
+    }
+    if (board[next] === "#")
+      return playerPosition === state.position
+        ? null
+        : {
+            position: playerPosition,
+            path: pathBetween(state.position, playerPosition, direction, size),
+            boulders: driftFloatingBoulders(
+              board,
+              state.boulders,
+              direction,
+              size,
+            ),
+            starsMask: collectAlongPath(
+              stars,
+              state.starsMask,
+              state.position,
+              playerPosition,
+              direction,
+              size,
+            ),
+            pushed: false,
+          };
+    if (boulderSet.has(next) && !movableBoulderSet.has(next)) {
+      return playerPosition === state.position
+        ? null
+        : {
+            position: playerPosition,
+            path: pathBetween(state.position, playerPosition, direction, size),
+            boulders: driftFloatingBoulders(
+              board,
+              state.boulders,
+              direction,
+              size,
+            ),
+            starsMask: collectAlongPath(
+              stars,
+              state.starsMask,
+              state.position,
+              playerPosition,
+              direction,
+              size,
+            ),
+            pushed: false,
+          };
+    }
     if (boulderSet.has(next)) {
       const chain = [];
       let chainRow = row;
@@ -368,6 +406,10 @@ function moveState(board, state, direction, size, stars) {
             boulderPosition = nextBoulderPosition;
             break;
           }
+          if (board[nextBoulderPosition] === "~") {
+            boulderPosition = nextBoulderPosition;
+            break;
+          }
           boulderPosition = nextBoulderPosition;
           boulderRow += direction.row;
           boulderCol += direction.col;
@@ -383,7 +425,12 @@ function moveState(board, state, direction, size, stars) {
                   direction,
                   size,
                 ),
-                boulders: driftFloatingBoulders(board, state.boulders, direction, size),
+                boulders: driftFloatingBoulders(
+                  board,
+                  state.boulders,
+                  direction,
+                  size,
+                ),
                 starsMask: collectAlongPath(
                   stars,
                   state.starsMask,
@@ -410,7 +457,12 @@ function moveState(board, state, direction, size, stars) {
                 direction,
                 size,
               ),
-              boulders: driftFloatingBoulders(board, state.boulders, direction, size),
+              boulders: driftFloatingBoulders(
+                board,
+                state.boulders,
+                direction,
+                size,
+              ),
               starsMask: collectAlongPath(
                 stars,
                 state.starsMask,
@@ -433,37 +485,15 @@ function moveState(board, state, direction, size, stars) {
             : 0),
         0,
       );
-      const movedBoulderSet = new Set(
-        boulders.filter((position) => board[position] !== "~"),
-      );
-      let followRow = startRow + direction.row;
-      let followCol = startCol + direction.col;
-      let followPosition = state.position;
-      while (
-        followRow >= 0 &&
-        followRow < size &&
-        followCol >= 0 &&
-        followCol < size
-      ) {
-        const followNext = cellIndex(followRow, followCol, size);
-        if (board[followNext] === "O" && !movedBoulderSet.has(followNext)) {
-          followPosition = followNext;
-          break;
-        }
-        if (board[followNext] === "#" || movedBoulderSet.has(followNext)) break;
-        followPosition = followNext;
-        followRow += direction.row;
-        followCol += direction.col;
-      }
       return {
-        position: followPosition,
-        path: pathBetween(state.position, followPosition, direction, size),
+        position: playerPosition,
+        path: pathBetween(state.position, playerPosition, direction, size),
         boulders,
         starsMask: collectAlongPath(
           stars,
           state.starsMask,
           state.position,
-          followPosition,
+          playerPosition,
           direction,
           size,
         ),
@@ -494,7 +524,16 @@ function moveState(board, state, direction, size, stars) {
       };
 }
 
-function solve(board, start, goal, size, initialBoulders, stars, initialStarsMask = 0) {
+function solve(
+  board,
+  start,
+  goal,
+  size,
+  initialBoulders,
+  stars,
+  initialStarsMask = 0,
+  maxStates = Infinity,
+) {
   const initialState = {
     position: start,
     boulders: initialBoulders,
@@ -513,6 +552,7 @@ function solve(board, start, goal, size, initialBoulders, stars, initialStarsMas
   let cursor = 0;
 
   while (cursor < queue.length) {
+    if (previous.size >= maxStates) break;
     const currentKey = queue[cursor];
     cursor += 1;
     const currentState = states.get(currentKey);
@@ -628,7 +668,8 @@ function generatePuzzle(dateKey, difficulty, size) {
     );
     if (!solution) continue;
     const meetsPushTarget = solution.pushes >= difficulty.minPushes;
-    const meetsWaterPushTarget = solution.waterPushes >= difficulty.minWaterPushes;
+    const meetsWaterPushTarget =
+      solution.waterPushes >= difficulty.minWaterPushes;
     const meetsHardRequirement =
       !difficulty.hardRequirement ||
       (solution.waterTiles >= difficulty.minWaterTiles &&
@@ -679,11 +720,11 @@ function tileClass(tile) {
       ? "water"
       : tile === "O"
         ? "solid"
-    : tile === "G"
-      ? "goal"
-      : tile === "S"
-        ? "start"
-        : "ice";
+        : tile === "G"
+          ? "goal"
+          : tile === "S"
+            ? "start"
+            : "ice";
 }
 
 function renderBoard(
@@ -694,11 +735,18 @@ function renderBoard(
   heatmap = null,
   showHeatmap = false,
 ) {
-  const maxHeat = heatmap ? Math.max(1, ...Object.values(heatmap)) : 1;
+  const maxHeat = heatmap
+    ? Math.max(
+        1,
+        ...Object.entries(heatmap)
+          .filter(([index]) => puzzle.cells[Number(index)] !== "#")
+          .map(([, value]) => value),
+      )
+    : 1;
   return `<div class="tile-board ${className}" style="--board-size: ${puzzle.size}" aria-label="${puzzle.size} by ${puzzle.size} ice puzzle">
     ${puzzle.cells
       .map((tile, index) => {
-        const heat = heatmap?.[index] || 0;
+        const heat = tile === "#" ? 0 : heatmap?.[index] || 0;
         const heatStyle =
           showHeatmap && heat
             ? ` style="--heat-opacity: ${Math.max(0.12, (heat / maxHeat) * 0.82)}"`
@@ -716,19 +764,10 @@ function puzzleCard(puzzle, difficulty, puzzleId) {
     <article class="puzzle-card ${difficulty.accent}" data-puzzle-id="${puzzleId}" data-generation-attempts="${puzzle.attempt + 1}" data-water-pushes="${puzzle.solution.waterPushes}" data-water-tiles="${puzzle.solution.waterTiles}" role="button" tabindex="0" aria-label="Play ${difficulty.label} puzzle">
       <div class="card-heading">
         <div>
-          <p class="eyebrow">${difficulty.label} / ${String(puzzle.difficultyScore).padStart(2, "0")} difficulty</p>
-          <h2>${difficulty.subtitle}</h2>
+          <p class="eyebrow">${difficulty.label} (${puzzle.difficultyScore})</p>
+          <h2>${String(puzzle.solution.route.length).padStart(2, "0")} minimum slides</h2>
         </div>
         <span class="difficulty-mark" aria-hidden="true">${difficulty.label[0]}</span>
-      </div>
-      <div class="preview-frame">
-        ${renderBoard(puzzle, puzzle.start, 0, "preview-board")}
-      </div>
-      <div class="metrics" aria-label="Puzzle metrics">
-        <div><strong>${puzzle.difficultyScore}</strong><span>difficulty</span></div>
-        <div><strong>${puzzle.solution.route.length}</strong><span>slides</span></div>
-        <div><strong>${puzzle.solution.explored}</strong><span>states checked</span></div>
-        <div><strong>${puzzle.stars.length}</strong><span>stars</span></div>
       </div>
     </article>
   `;
@@ -773,6 +812,14 @@ function render() {
     const size = 12;
     return { difficulty, puzzle: generatePuzzle(seedKey, difficulty, size) };
   });
+  const completionKey = `frostline-completed:${dateKey}`;
+  const completedPuzzles = new Set();
+  try {
+    JSON.parse(localStorage.getItem(completionKey) || "[]").forEach((id) => completedPuzzles.add(id));
+  } catch {
+    // Completion persistence is optional when storage is unavailable.
+  }
+  const dailyProgressMarkup = () => `<div class="daily-progress-card"><p class="eyebrow">Daily progress</p><div class="daily-stars">${DIFFICULTIES.slice().reverse().map((difficulty) => `<svg class="daily-star ${completedPuzzles.has(difficulty.id) ? "filled" : ""}" viewBox="0 0 24 24" aria-label="${difficulty.label} ${completedPuzzles.has(difficulty.id) ? "completed" : "incomplete"}"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" /></svg>`).join("")}</div><span class="daily-progress-label">${completedPuzzles.size} / 3 complete</span></div>`;
   document.querySelector("#app").innerHTML = `
     <main class="page-shell">
       <header class="hero">
@@ -787,7 +834,7 @@ function render() {
       </header>
       <section class="puzzles" aria-labelledby="daily-heading">
         <div class="section-intro"><div><p class="eyebrow">Today's set</p><h2 id="daily-heading">Choose your temperature.</h2></div><p class="section-note">The generator uses the date as its seed, so everyone gets the same three boards.</p></div>
-        <div class="puzzle-grid">${puzzles.map(({ puzzle, difficulty }, index) => puzzleCard(puzzle, difficulty, index)).join("")}</div>
+        <div class="puzzle-grid">${dailyProgressMarkup()}${puzzles.map(({ puzzle, difficulty }, index) => puzzleCard(puzzle, difficulty, index)).join("")}</div>
       </section>
       <footer class="footer"><span>FROSTLINE ENGINE 0.1</span><span>12 × 12 / BFS VERIFIED</span><span>NEW BOARDS AT MIDNIGHT</span></footer>
     </main>
@@ -810,6 +857,12 @@ function render() {
       : Date.now() - activeGame.startedAt;
     document.querySelector("#elapsed-time").textContent =
       formatElapsed(elapsed);
+  }
+
+  function updateDailyProgress() {
+    const progress = document.querySelector(".daily-progress-card");
+    if (!progress) return;
+    progress.outerHTML = dailyProgressMarkup();
   }
 
   document.querySelector("#refresh-puzzles").addEventListener("click", () => {
@@ -837,13 +890,18 @@ function render() {
         : `${collectedStars} / ${puzzle.stars.length} stars collected.`;
     document.querySelector("#end-game").disabled =
       finished || !atGoal || collectedStars === 0;
-    document.querySelector("#hint-button").disabled = finished || activeGame.restartPending;
+    document.querySelector("#hint-button").disabled =
+      finished || activeGame.restartPending;
     document.querySelector("#copy-heatmap").hidden = !finished;
     document.querySelector("#perfect-banner").hidden = !activeGame.perfect;
-    document.querySelector("#restart-overlay").hidden = !activeGame.restartPending;
-    document.querySelector("#restart-countdown").textContent = activeGame.restartCountdown;
+    document.querySelector("#restart-overlay").hidden =
+      !activeGame.restartPending;
+    document.querySelector("#restart-countdown").textContent =
+      activeGame.restartCountdown;
     document.querySelector(".game-modal").classList.toggle("won", finished);
-    document.querySelector(".game-modal").classList.toggle("perfect", activeGame.perfect);
+    document
+      .querySelector(".game-modal")
+      .classList.toggle("perfect", activeGame.perfect);
     gameBoard.innerHTML = renderBoard(
       { ...puzzle, boulders: activeGame.boulders },
       position,
@@ -885,12 +943,19 @@ function render() {
     modal.hidden = true;
     document.body.classList.remove("modal-open");
     if (activeGame?.timerId) window.clearInterval(activeGame.timerId);
-    if (activeGame?.restartTimerId) window.clearInterval(activeGame.restartTimerId);
+    if (activeGame?.restartTimerId)
+      window.clearInterval(activeGame.restartTimerId);
     activeGame = null;
   }
 
   function handleMove(directionName) {
-    if (!activeGame || activeGame.won || activeGame.ended || activeGame.restartPending) return;
+    if (
+      !activeGame ||
+      activeGame.won ||
+      activeGame.ended ||
+      activeGame.restartPending
+    )
+      return;
     const direction = DIRECTIONS.find(({ name }) => name === directionName);
     const next = moveState(
       activeGame.puzzle.cells,
@@ -907,6 +972,7 @@ function render() {
     if (next.failed) {
       activeGame.moves += 1;
       next.path.forEach((position) => {
+        if (activeGame.puzzle.cells[position] === "#") return;
         activeGame.heatmap[position] = (activeGame.heatmap[position] || 0) + 1;
       });
       activeGame.restartPending = true;
@@ -924,7 +990,8 @@ function render() {
           activeGame.ended = false;
           activeGame.perfect = false;
           activeGame.restartPending = false;
-          activeGame.heatmap[activeGame.puzzle.start] = (activeGame.heatmap[activeGame.puzzle.start] || 0) + 1;
+          activeGame.heatmap[activeGame.puzzle.start] =
+            (activeGame.heatmap[activeGame.puzzle.start] || 0) + 1;
           activeGame.resets += 1;
           activeGame.finishedAt = null;
           updateGame();
@@ -939,6 +1006,7 @@ function render() {
     activeGame.starsMask = next.starsMask;
     document.querySelector("#hint-output").textContent = "";
     next.path.forEach((position) => {
+      if (activeGame.puzzle.cells[position] === "#") return;
       activeGame.heatmap[position] = (activeGame.heatmap[position] || 0) + 1;
     });
     activeGame.moves += 1;
@@ -946,7 +1014,15 @@ function render() {
       next.position === activeGame.puzzle.goal &&
       next.starsMask === (1 << activeGame.puzzle.stars.length) - 1;
     if (activeGame.won) {
-      activeGame.perfect = activeGame.moves <= activeGame.puzzle.solution.route.length;
+      completedPuzzles.add(activeGame.difficulty.id);
+      try {
+        localStorage.setItem(completionKey, JSON.stringify([...completedPuzzles]));
+      } catch {
+        // Completion persistence is optional when storage is unavailable.
+      }
+      updateDailyProgress();
+      activeGame.perfect =
+        activeGame.moves <= activeGame.puzzle.solution.route.length;
       activeGame.finishedAt = Date.now();
       window.clearInterval(activeGame.timerId);
       activeGame.timerId = null;
@@ -963,19 +1039,33 @@ function render() {
     canvas.width = puzzle.size * cellSize;
     canvas.height = headerHeight + puzzle.size * cellSize + footerHeight;
     const context = canvas.getContext("2d");
-    const maxHeat = Math.max(1, ...Object.values(heatmap));
+    const maxHeat = Math.max(
+      1,
+      ...Object.entries(heatmap)
+        .filter(([index]) => puzzle.cells[Number(index)] !== "#")
+        .map(([, value]) => value),
+    );
     context.fillStyle = "#07121d";
     context.fillRect(0, 0, canvas.width, canvas.height);
     const elapsed = activeGame.finishedAt
       ? activeGame.finishedAt - activeGame.startedAt
       : Date.now() - activeGame.startedAt;
-    const collectedStars = activeGame.starsMask.toString(2).split("1").length - 1;
+    const collectedStars =
+      activeGame.starsMask.toString(2).split("1").length - 1;
     context.fillStyle = "#e7f1f2";
     context.font = "600 22px sans-serif";
-    context.fillText(activeGame.won ? "FROSTLINE / SOLVED" : "FROSTLINE / ENDED EARLY", 18, 30);
+    context.fillText(
+      activeGame.won ? "FROSTLINE / SOLVED" : "FROSTLINE / ENDED EARLY",
+      18,
+      30,
+    );
     context.fillStyle = "#8ca3a8";
     context.font = "500 13px monospace";
-    context.fillText(`STARS ${collectedStars}/${puzzle.stars.length}   MOVES ${activeGame.moves}   RESETS ${activeGame.resets}   TIME ${formatElapsed(elapsed)}`, 18, 58);
+    context.fillText(
+      `STARS ${collectedStars}/${puzzle.stars.length}   MOVES ${activeGame.moves}   RESETS ${activeGame.resets}   TIME ${formatElapsed(elapsed)}`,
+      18,
+      58,
+    );
     puzzle.cells.forEach((tile, index) => {
       const row = Math.floor(index / puzzle.size);
       const col = index % puzzle.size;
@@ -984,7 +1074,7 @@ function render() {
       context.fillStyle =
         tile === "#" ? "#20384b" : tile === "G" ? "#f0bd73" : "#8bd9d2";
       context.fillRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
-      if (heatmap[index]) {
+      if (tile !== "#" && heatmap[index]) {
         context.fillStyle = `rgba(241, 136, 120, ${Math.max(0.12, (heatmap[index] / maxHeat) * 0.82)})`;
         context.fillRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
       }
@@ -1028,7 +1118,13 @@ function render() {
   });
   document.querySelector(".close-game").addEventListener("click", closeGame);
   document.querySelector("#hint-button").addEventListener("click", () => {
-    if (!activeGame || activeGame.won || activeGame.ended || activeGame.restartPending) return;
+    if (
+      !activeGame ||
+      activeGame.won ||
+      activeGame.ended ||
+      activeGame.restartPending
+    )
+      return;
     const solution = solve(
       activeGame.puzzle.cells,
       activeGame.position,
@@ -1047,8 +1143,10 @@ function render() {
   });
   document.querySelector("#end-game").addEventListener("click", () => {
     if (!activeGame || activeGame.won || activeGame.ended) return;
-    const collectedStars = activeGame.starsMask.toString(2).split("1").length - 1;
-    if (activeGame.position !== activeGame.puzzle.goal || collectedStars === 0) return;
+    const collectedStars =
+      activeGame.starsMask.toString(2).split("1").length - 1;
+    if (activeGame.position !== activeGame.puzzle.goal || collectedStars === 0)
+      return;
     activeGame.ended = true;
     activeGame.finishedAt = Date.now();
     window.clearInterval(activeGame.timerId);
@@ -1105,4 +1203,6 @@ function render() {
   });
 }
 
-render();
+if (typeof document !== "undefined") render();
+
+export { calculateDifficulty, createCandidate, createRandom, hashSeed, solve };
